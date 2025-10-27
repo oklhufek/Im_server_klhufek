@@ -4,12 +4,13 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 import java.util.HashSet;
+import java.util.Set;
 
 public class SocketHandler {
 	Socket mySocket;
 	String clientID;
-	String userName = null;
-	HashSet<String> userRooms = new HashSet<>();
+	volatile String userName = null;
+	Set<String> userRooms = new HashSet<>();
 	
 	ActiveHandlers activeHandlers;
 	ArrayBlockingQueue<String> messages = new ArrayBlockingQueue<String>(20);
@@ -61,33 +62,40 @@ public class SocketHandler {
 				
 				activeHandlers.add(SocketHandler.this);
 				
-				String request = "";
-				
 				BufferedReader reader = new BufferedReader(
 					new InputStreamReader(mySocket.getInputStream(), "UTF-8"));
 				
-				while ((request = reader.readLine()) != null) {
-					request = request.trim();
+				String line;
+				boolean nameSet = false;
+				
+				while ((line = reader.readLine()) != null) {
+					line = line.trim();
+					if (line.isEmpty()) continue;
 					
-					if (request.isEmpty()) {
-						continue;
-					}
+					System.out.println("Received from " + clientID + ": " + line);
 					
-					System.out.println("Received from " + clientID + ": " + request);
-					
-					if (userName == null) {
-						if (!request.startsWith("#")) {
-							activeHandlers.setUserName(SocketHandler.this, request);
+					if (!nameSet) {
+						String candidate = null;
+						if (line.startsWith("#setMyName")) {
+							String[] parts = line.split("\\s+", 2);
+							if (parts.length == 2) {
+								candidate = parts[1].trim();
+							}
 						} else {
-							processCommand(request);
+							candidate = line;
+						}
+						
+						if (candidate != null && activeHandlers.setName(SocketHandler.this, candidate)) {
+							nameSet = true;
 						}
 						continue;
 					}
 					
-					if (request.startsWith("#")) {
-						processCommand(request);
+					if (line.startsWith("#")) {
+						processCommand(line);
 					} else {
-						activeHandlers.sendMessageToAll(SocketHandler.this, request);
+						String formatted = "[" + userName + "] >> " + line;
+						activeHandlers.broadcastToGroups(SocketHandler.this, formatted);
 					}
 				}
 				
@@ -108,52 +116,39 @@ public class SocketHandler {
 			System.err.println("DBG>Input handler for " + clientID + " has finished.");
 		}
 		
-		private void processCommand(String command) {
-			String[] parts = command.split("\\s+", 3);
-			String cmd = parts[0].toLowerCase();
-			
-			switch (cmd) {
-				case "#setmyname":
-					if (parts.length < 2) {
-						messages.offer("Usage: #setMyName <n>");
-					} else {
-						activeHandlers.setUserName(SocketHandler.this, parts[1]);
-					}
-					break;
-					
-				case "#sendprivate":
-					if (parts.length < 3) {
-						messages.offer("Usage: #sendPrivate <n> <message>");
-					} else {
-						String targetName = parts[1];
-						String privateMessage = parts[2];
-						activeHandlers.sendPrivateMessage(SocketHandler.this, targetName, privateMessage);
-					}
-					break;
-					
-				case "#join":
-					if (parts.length < 2) {
-						messages.offer("Usage: #join <room>");
-					} else {
-						activeHandlers.joinRoom(SocketHandler.this, parts[1]);
-					}
-					break;
-					
-				case "#leave":
-					if (parts.length < 2) {
-						messages.offer("Usage: #leave <room>");
-					} else {
-						activeHandlers.leaveRoom(SocketHandler.this, parts[1]);
-					}
-					break;
-					
-				case "#groups":
-					activeHandlers.listUserRooms(SocketHandler.this);
-					break;
-					
-				default:
-					messages.offer("Unknown command: " + cmd);
-					break;
+		private void processCommand(String line) {
+			if (line.startsWith("#setMyName")) {
+				String[] parts = line.split("\\s+", 2);
+				if (parts.length >= 2) {
+					activeHandlers.setName(SocketHandler.this, parts[1].trim());
+				}
+			} else if (line.startsWith("#sendPrivate")) {
+				String[] parts = line.split("\\s+", 3);
+				if (parts.length >= 3) {
+					String targetName = parts[1].trim();
+					String msg = parts[2];
+					String formatted = "[" + userName + "] >> " + msg;
+					activeHandlers.sendPrivate(targetName, formatted, SocketHandler.this);
+				}
+			} else if (line.startsWith("#join")) {
+				String[] parts = line.split("\\s+", 2);
+				if (parts.length >= 2) {
+					String room = parts[1].trim();
+					activeHandlers.joinGroup(room, SocketHandler.this);
+				}
+			} else if (line.startsWith("#leave")) {
+				String[] parts = line.split("\\s+", 2);
+				if (parts.length >= 2) {
+					String room = parts[1].trim();
+					activeHandlers.leaveGroup(room, SocketHandler.this);
+				}
+			} else if (line.equals("#groups")) {
+				Set<String> groups = activeHandlers.groupsOf(SocketHandler.this);
+				if (groups.isEmpty()) {
+					messages.offer("");
+				} else {
+					messages.offer(String.join(",", groups));
+				}
 			}
 		}
 	}

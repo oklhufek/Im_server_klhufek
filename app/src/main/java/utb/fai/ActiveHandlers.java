@@ -7,64 +7,54 @@ public class ActiveHandlers {
     private ConcurrentHashMap<String, SocketHandler> activeHandlersMap = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, HashSet<SocketHandler>> rooms = new ConcurrentHashMap<>();
 
-    synchronized void sendMessageToAll(SocketHandler sender, String message) {
+    synchronized void broadcastToGroups(SocketHandler sender, String message) {
         if (sender.userName == null || sender.userName.isEmpty()) {
-            System.err.println("DBG>Cannot send message - user has no name set");
             return;
         }
 
-        String formattedMessage = "[" + sender.userName + "] >> " + message;
-        
-        System.err.println("DBG>Sending message from " + sender.userName + " in rooms: " + sender.userRooms);
-        
+        HashSet<SocketHandler> recipients = new HashSet<>();
         for (String room : sender.userRooms) {
             HashSet<SocketHandler> roomMembers = rooms.get(room);
             if (roomMembers != null) {
-                System.err.println("DBG>Room " + room + " has " + roomMembers.size() + " members");
-                for (SocketHandler handler : roomMembers) {
-                    if (handler != sender && handler.userName != null) {
-                        System.err.println("DBG>Sending to " + handler.userName);
-                        if (!handler.messages.offer(formattedMessage)) {
-                            System.err.printf("Client %s message queue is full, dropping the message!\n", 
-                                handler.clientID);
-                        }
-                    }
+                recipients.addAll(roomMembers);
+            }
+        }
+        
+        recipients.remove(sender);
+        
+        for (SocketHandler handler : recipients) {
+            if (handler.userName != null) {
+                if (!handler.messages.offer(message)) {
+                    System.err.printf("Client %s message queue is full, dropping the message!\n", 
+                        handler.clientID);
                 }
-            } else {
-                System.err.println("DBG>Room " + room + " not found!");
             }
         }
     }
 
-    synchronized void sendPrivateMessage(SocketHandler sender, String targetName, String message) {
+    synchronized boolean sendPrivate(String targetName, String message, SocketHandler sender) {
         if (sender.userName == null || sender.userName.isEmpty()) {
-            return;
+            return false;
         }
 
         SocketHandler target = activeHandlersMap.get(targetName);
         if (target == null) {
-            return;
-        }
-
-        String formattedMessage = "[" + sender.userName + "] >> " + message;
-        if (!target.messages.offer(formattedMessage)) {
-            System.err.printf("Client %s message queue is full, dropping the message!\n", target.clientID);
-        }
-    }
-
-    synchronized boolean setUserName(SocketHandler handler, String newName) {
-        if (newName == null || newName.trim().isEmpty()) {
-            System.err.println("DBG>Cannot set empty name");
             return false;
         }
 
-        if (newName.contains(" ")) {
-            System.err.println("DBG>Name contains spaces: " + newName);
+        if (!target.messages.offer(message)) {
+            System.err.printf("Client %s message queue is full, dropping the message!\n", target.clientID);
+            return false;
+        }
+        return true;
+    }
+
+    synchronized boolean setName(SocketHandler handler, String newName) {
+        if (newName == null || newName.trim().isEmpty() || newName.contains(" ")) {
             return false;
         }
 
         if (activeHandlersMap.containsKey(newName) && !newName.equals(handler.userName)) {
-            System.err.println("DBG>Name already taken: " + newName);
             return false;
         }
 
@@ -74,34 +64,21 @@ public class ActiveHandlers {
 
         handler.userName = newName;
         activeHandlersMap.put(newName, handler);
-        System.err.println("DBG>User name set to: " + newName + " for " + handler.clientID);
         return true;
     }
 
-    synchronized void joinRoom(SocketHandler handler, String roomName) {
-        if (handler.userName == null || handler.userName.isEmpty()) {
-            System.err.println("DBG>Cannot join room - no username set for " + handler.clientID);
-            return;
-        }
-
+    synchronized void joinGroup(String roomName, SocketHandler handler) {
         if (roomName == null || roomName.trim().isEmpty()) {
-            System.err.println("DBG>Cannot join - empty room name");
             return;
         }
 
         rooms.putIfAbsent(roomName, new HashSet<>());
-        
         HashSet<SocketHandler> roomMembers = rooms.get(roomName);
         roomMembers.add(handler);
         handler.userRooms.add(roomName);
-        System.err.println("DBG>" + handler.userName + " joined room: " + roomName);
     }
 
-    synchronized void leaveRoom(SocketHandler handler, String roomName) {
-        if (handler.userName == null || handler.userName.isEmpty()) {
-            return;
-        }
-
+    synchronized void leaveGroup(String roomName, SocketHandler handler) {
         if (!handler.userRooms.contains(roomName)) {
             return;
         }
@@ -117,27 +94,18 @@ public class ActiveHandlers {
         }
     }
 
-    synchronized void listUserRooms(SocketHandler handler) {
-        if (handler.userName == null || handler.userName.isEmpty()) {
-            return;
-        }
-
-        if (handler.userRooms.isEmpty()) {
-            handler.messages.offer("");
-        } else {
-            String roomList = String.join(",", handler.userRooms);
-            handler.messages.offer(roomList);
-        }
+    synchronized Set<String> groupsOf(SocketHandler handler) {
+        return new LinkedHashSet<>(handler.userRooms);
     }
 
     synchronized boolean add(SocketHandler handler) {
-        joinRoom(handler, "public");
+        joinGroup("public", handler);
         return true;
     }
 
     synchronized boolean remove(SocketHandler handler) {
         for (String room : new HashSet<>(handler.userRooms)) {
-            leaveRoom(handler, room);
+            leaveGroup(room, handler);
         }
         
         if (handler.userName != null) {
