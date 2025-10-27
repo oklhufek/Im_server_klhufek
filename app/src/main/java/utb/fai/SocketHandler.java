@@ -76,7 +76,7 @@ public class SocketHandler {
 					
 					System.out.println("Received from " + clientID + ": " + request);
 					
-					if (firstMessage && userName == null) {
+					if (firstMessage) {
 						firstMessage = false;
 						if (!request.startsWith("#")) {
 							activeHandlers.setUserName(SocketHandler.this, request);
