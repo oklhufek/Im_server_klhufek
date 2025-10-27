@@ -54,14 +54,17 @@ public class ActiveHandlers {
 
     synchronized boolean setUserName(SocketHandler handler, String newName) {
         if (newName == null || newName.trim().isEmpty()) {
+            System.err.println("DBG>Cannot set empty name");
             return false;
         }
 
         if (newName.contains(" ")) {
+            System.err.println("DBG>Name contains spaces: " + newName);
             return false;
         }
 
         if (activeHandlersMap.containsKey(newName) && !newName.equals(handler.userName)) {
+            System.err.println("DBG>Name already taken: " + newName);
             return false;
         }
 
@@ -71,15 +74,18 @@ public class ActiveHandlers {
 
         handler.userName = newName;
         activeHandlersMap.put(newName, handler);
+        System.err.println("DBG>User name set to: " + newName + " for " + handler.clientID);
         return true;
     }
 
     synchronized void joinRoom(SocketHandler handler, String roomName) {
         if (handler.userName == null || handler.userName.isEmpty()) {
+            System.err.println("DBG>Cannot join room - no username set for " + handler.clientID);
             return;
         }
 
         if (roomName == null || roomName.trim().isEmpty()) {
+            System.err.println("DBG>Cannot join - empty room name");
             return;
         }
 
@@ -88,6 +94,7 @@ public class ActiveHandlers {
         HashSet<SocketHandler> roomMembers = rooms.get(roomName);
         roomMembers.add(handler);
         handler.userRooms.add(roomName);
+        System.err.println("DBG>" + handler.userName + " joined room: " + roomName);
     }
 
     synchronized void leaveRoom(SocketHandler handler, String roomName) {
