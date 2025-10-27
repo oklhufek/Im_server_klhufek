@@ -59,13 +59,12 @@ public class SocketHandler {
 				startSignal.await();
 				System.err.println("DBG>Input handler running for " + clientID);
 				
-				String request = "";
 				activeHandlers.add(SocketHandler.this);
+				
+				String request = "";
 				
 				BufferedReader reader = new BufferedReader(
 					new InputStreamReader(mySocket.getInputStream(), "UTF-8"));
-				
-				boolean firstMessage = true;
 				
 				while ((request = reader.readLine()) != null) {
 					request = request.trim();
@@ -76,12 +75,13 @@ public class SocketHandler {
 					
 					System.out.println("Received from " + clientID + ": " + request);
 					
-					if (firstMessage) {
-						firstMessage = false;
+					if (userName == null) {
 						if (!request.startsWith("#")) {
 							activeHandlers.setUserName(SocketHandler.this, request);
-							continue;
+						} else {
+							processCommand(request);
 						}
+						continue;
 					}
 					
 					if (request.startsWith("#")) {

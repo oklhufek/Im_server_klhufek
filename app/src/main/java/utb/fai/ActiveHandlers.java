@@ -9,22 +9,29 @@ public class ActiveHandlers {
 
     synchronized void sendMessageToAll(SocketHandler sender, String message) {
         if (sender.userName == null || sender.userName.isEmpty()) {
+            System.err.println("DBG>Cannot send message - user has no name set");
             return;
         }
 
         String formattedMessage = "[" + sender.userName + "] >> " + message;
         
+        System.err.println("DBG>Sending message from " + sender.userName + " in rooms: " + sender.userRooms);
+        
         for (String room : sender.userRooms) {
             HashSet<SocketHandler> roomMembers = rooms.get(room);
             if (roomMembers != null) {
+                System.err.println("DBG>Room " + room + " has " + roomMembers.size() + " members");
                 for (SocketHandler handler : roomMembers) {
                     if (handler != sender && handler.userName != null) {
+                        System.err.println("DBG>Sending to " + handler.userName);
                         if (!handler.messages.offer(formattedMessage)) {
                             System.err.printf("Client %s message queue is full, dropping the message!\n", 
                                 handler.clientID);
                         }
                     }
                 }
+            } else {
+                System.err.println("DBG>Room " + room + " not found!");
             }
         }
     }
