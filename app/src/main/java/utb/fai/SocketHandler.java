@@ -35,8 +35,6 @@ public class SocketHandler {
 				System.err.println("DBG>Output handler running for " + clientID);
 				
 				writer = new OutputStreamWriter(mySocket.getOutputStream(), "UTF-8");
-				writer.write("\nPlease enter your name:\n");
-				writer.flush();
 				
 				while (!inputFinished) {
 					String m = messages.take();
