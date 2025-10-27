@@ -63,11 +63,14 @@ jobs:
         name: app-libs
         path: app/build/libs
 
+    - name: Download test config
+      run: wget -O test-config.yaml "https://gitlab.com/ap5vs/test-config/im-server-config/-/raw/main/test-config-4.yaml"
+
     - name: Run black box tests
-      run: java -jar NATT.jar -c https://gitlab.com/ap5vs/test-config/im-server-config/-/raw/main/test-config-4.yaml?ref_type=heads
+      run: java -jar NATT.jar -c test-config.yaml
 
     - name: Save test report
-      if: success()
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-report
